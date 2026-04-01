@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PromptCode - Review Result</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="page-shell">
+        <div class="hero-card result-hero">
+            <div class="badge">Structured Review Output</div>
+            <h1 class="page-title">Review Result</h1>
+            <p class="page-subtitle">
+                AI-assisted code review with rule-based analysis signals.
+            </p>
+        </div>
+
+        <div class="summary-card">
+            <h2 class="section-title">Summary</h2>
+            <p class="summary-text">{{ final_result.summary }}</p>
+        </div>
+
+        <div class="score-panel">
+            <div class="score-card">
+                <div class="score-label">Correctness</div>
+                <div class="score-value">{{ final_result.scores.correctness }}</div>
+            </div>
+            <div class="score-card">
+                <div class="score-label">Readability</div>
+                <div class="score-value">{{ final_result.scores.readability }}</div>
+            </div>
+            <div class="score-card">
+                <div class="score-label">Maintainability</div>
+                <div class="score-value">{{ final_result.scores.maintainability }}</div>
+            </div>
+            <div class="score-card">
+                <div class="score-label">Documentation</div>
+                <div class="score-value">{{ final_result.scores.documentation_quality }}</div>
+            </div>
+            <div class="score-card overall-score">
+                <div class="score-label">Overall Score</div>
+                <div class="score-value">{{ final_result.overall_score }}</div>
+            </div>
+        </div>
+
+        <div class="grid-two">
+            <section class="content-card">
+                <h2 class="section-title">Bugs</h2>
+                <ul class="styled-list">
+                    {% for b in final_result.bugs %}
+                        <li>{{ b }}</li>
+                    {% endfor %}
+                </ul>
+            </section>
+
+            <section class="content-card">
+                <h2 class="section-title">Style Issues</h2>
+                <ul class="styled-list">
+                    {% for s in final_result.style_issues %}
+                        <li>{{ s }}</li>
+                    {% endfor %}
+                </ul>
+            </section>
+
+            <section class="content-card">
+                <h2 class="section-title">Maintainability Issues</h2>
+                <ul class="styled-list">
+                    {% for m in final_result.maintainability_issues %}
+                        <li>{{ m }}</li>
+                    {% endfor %}
+                </ul>
+            </section>
+
+            <section class="content-card">
+                <h2 class="section-title">Documentation Issues</h2>
+                <ul class="styled-list">
+                    {% for d in final_result.documentation_issues %}
+                        <li>{{ d }}</li>
+                    {% endfor %}
+                </ul>
+            </section>
+        </div>
+
+        <section class="content-card">
+            <h2 class="section-title">Suggestions</h2>
+            <ul class="styled-list">
+                {% for s in final_result.suggestions %}
+                    <li>{{ s }}</li>
+                {% endfor %}
+            </ul>
+        </section>
+
+        <section class="content-card">
+            <h2 class="section-title">Improved Code</h2>
+            <pre class="code-block">{{ final_result.improved_code }}</pre>
+        </section>
+
+        <div class="actions-row">
+            <a href="/" class="secondary-btn">Back to Home</a>
+        </div>
+    </div>
+</body>
+</html>

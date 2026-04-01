@@ -1,0 +1,874 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PromptCode</title>
+
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/prism.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-python.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-javascript.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-java.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-sql.min.js"></script>
+
+    <style>
+        * { box-sizing: border-box; }
+
+        :root {
+            --bg: #f7f7fb;
+            --panel: #ffffff;
+            --line: #e5e7eb;
+            --text: #111827;
+            --muted: #6b7280;
+            --blue: #2563eb;
+            --blue-dark: #1d4ed8;
+            --shadow: 0 10px 30px rgba(15, 23, 42, 0.10);
+            --radius: 18px;
+            --code-bg: #ffffff;
+            --code-fg: #111111;
+        }
+
+        html, body {
+            margin: 0;
+            padding: 0;
+            background: var(--bg);
+            color: var(--text);
+            font-family: Arial, Helvetica, sans-serif;
+        }
+
+        body {
+            padding-bottom: 260px;
+        }
+
+        .page {
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 28px 18px 24px;
+        }
+
+        .topbar {
+            margin-bottom: 22px;
+        }
+
+        .eyebrow {
+            display: inline-block;
+            background: #dbeafe;
+            color: #1d4ed8;
+            padding: 8px 12px;
+            border-radius: 999px;
+            font-size: 12px;
+            font-weight: 700;
+            margin-bottom: 12px;
+        }
+
+        h1 {
+            font-size: 44px;
+            margin: 0 0 10px;
+        }
+
+        .subtitle {
+            margin: 0;
+            color: var(--muted);
+            line-height: 1.7;
+            max-width: 760px;
+        }
+
+        .clear-row {
+            margin-top: 14px;
+        }
+
+        .ghost-btn {
+            border: 1px solid var(--line);
+            background: white;
+            color: #374151;
+            padding: 10px 14px;
+            border-radius: 12px;
+            font-weight: 700;
+            cursor: pointer;
+        }
+
+        .ghost-btn:hover {
+            background: #f3f4f6;
+        }
+
+        .error-banner {
+            background: #fff7ed;
+            border: 1px solid #fdba74;
+            color: #9a3412;
+            padding: 14px 16px;
+            border-radius: 14px;
+            margin-bottom: 16px;
+        }
+
+        .history {
+            display: flex;
+            flex-direction: column;
+            gap: 18px;
+        }
+
+        .welcome-card,
+        .user-card,
+        .assistant-card,
+        .mini-panel,
+        .summary-box,
+        .wide-panel,
+        .score-box,
+        .chat-panel {
+            background: var(--panel);
+            border: 1px solid var(--line);
+            border-radius: var(--radius);
+            box-shadow: var(--shadow);
+        }
+
+        .welcome-card {
+            padding: 24px;
+        }
+
+        .welcome-card h2 {
+            margin: 0 0 10px;
+        }
+
+        .welcome-card p {
+            margin: 0;
+            color: var(--muted);
+            line-height: 1.8;
+        }
+
+        .turn {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .user-card {
+            padding: 20px;
+            background: #eef4ff;
+        }
+
+        .assistant-card {
+            padding: 20px;
+        }
+
+        .card-top {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+            margin-bottom: 10px;
+            flex-wrap: wrap;
+        }
+
+        .pill {
+            display: inline-block;
+            padding: 6px 10px;
+            border-radius: 999px;
+            font-size: 12px;
+            font-weight: 700;
+        }
+
+        .pill-user {
+            background: #bfdbfe;
+            color: #1d4ed8;
+        }
+
+        .pill-assistant {
+            background: #dcfce7;
+            color: #166534;
+        }
+
+        .pill-mode {
+            background: #e5e7eb;
+            color: #374151;
+        }
+
+        .section-title {
+            margin: 0 0 10px;
+            font-size: 20px;
+        }
+
+        .code-wrap {
+            position: relative;
+        }
+
+        .copy-btn {
+            position: absolute;
+            top: 8px;
+            right: 8px;
+            background: #f6f8fa;
+            color: #24292f;
+            border: 1px solid #d0d7de;
+            padding: 6px 10px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 12px;
+            font-weight: 700;
+            z-index: 10;
+        }
+
+        .copy-btn:hover {
+            background: #eef2f6;
+        }
+
+        .markdown-copy-btn {
+            position: absolute;
+            top: 8px;
+            right: 8px;
+            background: #f6f8fa;
+            color: #24292f;
+            border: 1px solid #d0d7de;
+            padding: 6px 10px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 12px;
+            font-weight: 700;
+            z-index: 10;
+        }
+
+        .markdown-copy-btn:hover {
+            background: #eef2f6;
+        }
+
+        .code-block {
+            margin: 0;
+            background: var(--code-bg);
+            color: var(--code-fg);
+            padding: 16px;
+            border-radius: 14px;
+            overflow-x: auto;
+            font-family: "SFMono-Regular", Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+            font-size: 14px;
+            line-height: 1.65;
+            white-space: pre-wrap;
+            text-shadow: none;
+            -webkit-font-smoothing: auto;
+            -moz-osx-font-smoothing: auto;
+            border: 1px solid #d0d7de;
+            background: #ffffff;
+            color: #111111;
+            }
+
+        .summary-box,
+        .wide-panel,
+        .chat-panel {
+            padding: 16px;
+            margin-bottom: 12px;
+            background: #f8fafc;
+        }
+
+        .summary-box p {
+            margin: 0;
+            line-height: 1.8;
+            color: #374151;
+            white-space: pre-wrap;
+        }
+
+        .score-grid {
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            gap: 10px;
+            margin-bottom: 12px;
+        }
+
+        .score-box {
+            padding: 16px;
+            text-align: center;
+        }
+
+        .score-label {
+            display: block;
+            font-size: 13px;
+            color: var(--muted);
+            margin-bottom: 8px;
+            font-weight: 700;
+        }
+
+        .score-value {
+            font-size: 28px;
+            font-weight: 800;
+        }
+
+        .analysis-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+            margin-bottom: 12px;
+        }
+
+        .mini-panel {
+            padding: 16px;
+            background: #f8fafc;
+        }
+
+        .mini-panel h3,
+        .wide-panel h3,
+        .chat-panel h3 {
+            margin: 0 0 10px;
+            font-size: 18px;
+        }
+
+        .clean-list {
+            margin: 0;
+            padding-left: 20px;
+            line-height: 1.8;
+            color: #374151;
+        }
+
+        .markdown-body {
+            line-height: 1.8;
+            color: #374151;
+        }
+
+        .markdown-body pre,
+        pre[class*="language-"] {
+            position: relative;
+            background: #ffffff !important;
+            color: #111111 !important;
+            padding: 16px !important;
+            border-radius: 14px !important;
+            overflow-x: auto !important;
+            text-shadow: none !important;
+            border: 1px solid #d0d7de !important;
+
+        }
+
+        .markdown-body code,
+        code[class*="language-"],
+        pre[class*="language-"] {
+            font-family: "SFMono-Regular", Menlo, Monaco, Consolas, "Liberation Mono", monospace !important;
+            text-shadow: none !important;
+            background: transparent !important;
+            color: #111111 !important;
+
+        }
+
+        /* ---------- Custom Prism colors ---------- */
+        code[class*="language-"],
+        pre[class*="language-"] {
+            color: #111111 !important;
+        }
+
+        .token.comment,
+        .token.prolog,
+        .token.doctype,
+        .token.cdata {
+            color: #6e7781 !important;
+            font-style: italic;
+        }
+
+        .token.punctuation {
+            color: #24292f !important;
+        }
+
+        .token.property,
+        .token.tag,
+        .token.boolean,
+        .token.number,
+        .token.constant,
+        .token.symbol,
+        .token.deleted {
+            color: #0550ae !important;
+        }
+
+        .token.selector,
+        .token.attr-name,
+        .token.string,
+        .token.char,
+        .token.builtin,
+        .token.inserted {
+            color: #0a3069 !important;
+        }
+
+        .token.operator,
+        .token.entity,
+        .token.url,
+        .token.variable {
+            color: #cf222e !important;
+            background: transparent !important;
+        }
+
+        .token.atrule,
+        .token.attr-value,
+        .token.function,
+        .token.class-name {
+            color: #8250df !important;
+        }
+
+        .token.keyword {
+            color: #cf222e !important;
+            font-weight: 600;
+        }
+
+        .token.regex,
+        .token.important {
+            color: #9a6700 !important;
+        }
+
+        .token.namespace {
+            opacity: 1 !important;
+        }
+
+        .token.bold {
+            font-weight: bold;
+        }
+
+        .token.italic {
+            font-style: italic;
+        }
+
+        .composer-wrap {
+            position: fixed;
+            left: 50%;
+            transform: translateX(-50%);
+            bottom: 16px;
+            width: min(1000px, calc(100vw - 24px));
+            z-index: 9999;
+        }
+
+        .composer {
+            background: rgba(255,255,255,0.98);
+            border: 1px solid var(--line);
+            border-radius: 22px;
+            box-shadow: 0 20px 50px rgba(15, 23, 42, 0.18);
+            overflow: hidden;
+            backdrop-filter: blur(10px);
+        }
+
+        .composer-toolbar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 12px;
+            padding: 14px 16px;
+            border-bottom: 1px solid var(--line);
+            background: #f8fafc;
+        }
+
+        .toolbar-left {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .toolbar-label {
+            font-size: 14px;
+            font-weight: 700;
+            color: #374151;
+        }
+
+        .mode-select {
+            border: 1px solid #cbd5e1;
+            border-radius: 12px;
+            padding: 10px 12px;
+            background: white;
+            font-size: 14px;
+            outline: none;
+        }
+
+        .mode-select:focus {
+            border-color: var(--blue);
+            box-shadow: 0 0 0 4px rgba(37,99,235,0.12);
+        }
+
+        .toolbar-right {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        .chip {
+            display: inline-block;
+            padding: 7px 10px;
+            border-radius: 999px;
+            background: #e5e7eb;
+            color: #374151;
+            font-size: 12px;
+            font-weight: 700;
+        }
+
+        .composer-textarea {
+            width: 100%;
+            min-height: 90px;
+            height: 90px;
+            max-height: 260px;
+            resize: none;
+            overflow-y: auto;
+            border: none;
+            outline: none;
+            padding: 18px;
+            background: var(--code-bg);
+            color: var(--code-fg);
+            font-family: "SFMono-Regular", Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+            font-size: 14px;
+            line-height: 1.7;
+        }
+
+        .composer-footer {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 12px;
+            padding: 14px 16px;
+            border-top: 1px solid var(--line);
+            background: white;
+        }
+
+        .composer-tip {
+            color: var(--muted);
+            font-size: 14px;
+        }
+
+        .send-btn {
+            border: none;
+            background: var(--blue);
+            color: white;
+            padding: 13px 20px;
+            border-radius: 14px;
+            font-size: 15px;
+            font-weight: 800;
+            cursor: pointer;
+            min-width: 96px;
+        }
+
+        .send-btn:hover {
+            background: var(--blue-dark);
+        }
+
+        .send-btn:disabled {
+            background: #93c5fd;
+            cursor: not-allowed;
+        }
+
+        @media (max-width: 900px) {
+            .score-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+
+            .analysis-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        @media (max-width: 640px) {
+            body {
+                padding-bottom: 330px;
+            }
+
+            h1 {
+                font-size: 32px;
+            }
+
+            .composer-toolbar,
+            .composer-footer {
+                flex-direction: column;
+                align-items: stretch;
+            }
+
+            .toolbar-left,
+            .toolbar-right {
+                width: 100%;
+            }
+
+            .mode-select {
+                width: 100%;
+            }
+
+            .score-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .composer-wrap {
+                width: calc(100vw - 16px);
+                bottom: 8px;
+            }
+
+            .composer-textarea {
+                min-height: 78px;
+                height: 78px;
+                max-height: 220px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="page">
+        <header class="topbar">
+            <div class="eyebrow">LLM + Rule-based Review</div>
+            <h1>PromptCode</h1>
+            <p class="subtitle">
+                Code review workspace with natural language chat support, multi-language generation, markdown rendering, syntax highlight, and copy buttons.
+            </p>
+
+            <div class="clear-row">
+                <form method="post" action="/">
+                    <input type="hidden" name="action" value="clear">
+                    <button type="submit" class="ghost-btn">Clear Current Session</button>
+                </form>
+            </div>
+        </header>
+
+        {% if error %}
+        <div class="error-banner">{{ error }}</div>
+        {% endif %}
+
+        <main class="history" id="history">
+            {% if history|length == 0 %}
+            <section class="welcome-card">
+                <h2>Start your first message</h2>
+                <p>
+                    Try:
+                    <br><br>
+                    "Give me a Python hello world"
+                    <br>
+                    "Write a Java hello world"
+                    <br>
+                    "Review this Python function"
+                </p>
+            </section>
+            {% endif %}
+
+            {% for item in history %}
+            <div class="turn">
+                <section class="user-card">
+                    <div class="card-top">
+                        <span class="pill pill-user">You</span>
+                        <span class="pill pill-mode">{{ item.mode }}</span>
+                        <span class="pill pill-mode">{{ item.language }}</span>
+                    </div>
+
+                    <div class="section-title">
+                        {% if item.input_kind == "chat" %}Your Message{% else %}Submitted Code{% endif %}
+                    </div>
+
+                    <div class="code-wrap">
+                        <button class="copy-btn" type="button" onclick="copyText(this)">Copy</button>
+                        <pre class="code-block">{{ item.user_code }}</pre>
+                    </div>
+                </section>
+
+                <section class="assistant-card">
+                    <div class="card-top">
+                        <span class="pill pill-assistant">PromptCode</span>
+                    </div>
+
+                    {% if item.input_kind == "chat" %}
+                    <section class="chat-panel">
+                        <h3>Assistant Response</h3>
+                        <div class="markdown-body render-markdown">{{ item.result.summary }}</div>
+                    </section>
+                    {% else %}
+                    <section class="summary-box">
+                        <h3>Summary</h3>
+                        <p>{{ item.result.summary }}</p>
+                    </section>
+
+                    <div class="score-grid">
+                        <div class="score-box">
+                            <span class="score-label">Correctness</span>
+                            <span class="score-value">{{ item.result.scores.correctness }}</span>
+                        </div>
+                        <div class="score-box">
+                            <span class="score-label">Readability</span>
+                            <span class="score-value">{{ item.result.scores.readability }}</span>
+                        </div>
+                        <div class="score-box">
+                            <span class="score-label">Maintainability</span>
+                            <span class="score-value">{{ item.result.scores.maintainability }}</span>
+                        </div>
+                        <div class="score-box">
+                            <span class="score-label">Documentation</span>
+                            <span class="score-value">{{ item.result.scores.documentation_quality }}</span>
+                        </div>
+                        <div class="score-box">
+                            <span class="score-label">Overall</span>
+                            <span class="score-value">{{ item.result.overall_score }}</span>
+                        </div>
+                    </div>
+
+                    <div class="analysis-grid">
+                        <section class="mini-panel">
+                            <h3>Bugs</h3>
+                            <ul class="clean-list">
+                                {% for b in item.result.bugs %}
+                                <li>{{ b }}</li>
+                                {% endfor %}
+                            </ul>
+                        </section>
+
+                        <section class="mini-panel">
+                            <h3>Style Issues</h3>
+                            <ul class="clean-list">
+                                {% for s in item.result.style_issues %}
+                                <li>{{ s }}</li>
+                                {% endfor %}
+                            </ul>
+                        </section>
+
+                        <section class="mini-panel">
+                            <h3>Maintainability Issues</h3>
+                            <ul class="clean-list">
+                                {% for m in item.result.maintainability_issues %}
+                                <li>{{ m }}</li>
+                                {% endfor %}
+                            </ul>
+                        </section>
+
+                        <section class="mini-panel">
+                            <h3>Documentation Issues</h3>
+                            <ul class="clean-list">
+                                {% for d in item.result.documentation_issues %}
+                                <li>{{ d }}</li>
+                                {% endfor %}
+                            </ul>
+                        </section>
+                    </div>
+
+                    <section class="wide-panel">
+                        <h3>Suggestions</h3>
+                        <ul class="clean-list">
+                            {% for s in item.result.suggestions %}
+                            <li>{{ s }}</li>
+                            {% endfor %}
+                        </ul>
+                    </section>
+
+                    <section class="wide-panel">
+                        <h3>Improved Code</h3>
+                        <div class="code-wrap">
+                            <button class="copy-btn" type="button" onclick="copyText(this)">Copy</button>
+                            <pre class="code-block">{{ item.result.improved_code }}</pre>
+                        </div>
+                    </section>
+                    {% endif %}
+                </section>
+            </div>
+            {% endfor %}
+        </main>
+    </div>
+
+    <div class="composer-wrap">
+        <section class="composer">
+            <form action="/" method="post" id="composer-form">
+                <input type="hidden" name="action" value="send">
+
+                <div class="composer-toolbar">
+                    <div class="toolbar-left">
+                        <label for="mode" class="toolbar-label">Mode</label>
+                        <select id="mode" name="mode" class="mode-select">
+                            <option value="auto" {% if mode == "auto" %}selected{% endif %}>Auto</option>
+                            <option value="chat" {% if mode == "chat" %}selected{% endif %}>Chat</option>
+                            <option value="bug" {% if mode == "bug" %}selected{% endif %}>Bug Review</option>
+                            <option value="style_docs" {% if mode == "style_docs" %}selected{% endif %}>Style & Docs Review</option>
+                            <option value="full" {% if mode == "full" %}selected{% endif %}>Full Review</option>
+                        </select>
+                    </div>
+
+                    <div class="toolbar-right">
+                        <span class="chip">Multi-language</span>
+                        <span class="chip">Markdown + Highlight</span>
+                    </div>
+                </div>
+
+                <textarea
+                    id="code"
+                    name="code"
+                    class="composer-textarea"
+                    placeholder="Ask naturally, or paste code. Example: Give me a Python hello world"
+                    required
+                >{{ code }}</textarea>
+
+                <div class="composer-footer">
+                    <div class="composer-tip">Auto mode detects natural language vs code. Chat mode is best for direct questions.</div>
+                    <button type="submit" class="send-btn" id="send-btn">Send</button>
+                </div>
+            </form>
+        </section>
+    </div>
+
+    <script>
+        marked.setOptions({
+            highlight: function(code, lang) {
+                if (lang && Prism.languages[lang]) {
+                    return Prism.highlight(code, Prism.languages[lang], lang);
+                }
+                return code;
+            }
+        });
+
+        const textarea = document.getElementById("code");
+        const composerForm = document.getElementById("composer-form");
+        const sendBtn = document.getElementById("send-btn");
+
+        function autoResize(el) {
+            el.style.height = "90px";
+            const next = Math.min(el.scrollHeight, 260);
+            el.style.height = next + "px";
+        }
+
+        function copyText(button) {
+            const pre = button.parentElement.querySelector("pre");
+            if (!pre) return;
+            navigator.clipboard.writeText(pre.innerText);
+            button.innerText = "Copied";
+            setTimeout(() => {
+                button.innerText = "Copy";
+            }, 1200);
+        }
+
+        function addCopyButtonsToMarkdownCode() {
+            const codeBlocks = document.querySelectorAll(".markdown-body pre");
+            codeBlocks.forEach((pre) => {
+                if (pre.dataset.copyReady === "true") return;
+
+                pre.dataset.copyReady = "true";
+                const btn = document.createElement("button");
+                btn.className = "markdown-copy-btn";
+                btn.type = "button";
+                btn.innerText = "Copy";
+                btn.addEventListener("click", function () {
+                    navigator.clipboard.writeText(pre.innerText);
+                    btn.innerText = "Copied";
+                    setTimeout(() => {
+                        btn.innerText = "Copy";
+                    }, 1200);
+                });
+
+                pre.style.position = "relative";
+                pre.appendChild(btn);
+            });
+        }
+
+        function renderMarkdownBlocks() {
+            const blocks = document.querySelectorAll(".render-markdown");
+            blocks.forEach((block) => {
+                const raw = block.textContent;
+                block.innerHTML = marked.parse(raw);
+
+                block.querySelectorAll("pre code").forEach((code) => {
+                    const className = code.className || "";
+                    const match = className.match(/language-([\w-]+)/);
+                    if (match && code.parentElement && !code.parentElement.className.includes("language-")) {
+                        code.parentElement.classList.add("language-" + match[1]);
+                    }
+                });
+            });
+            Prism.highlightAll();
+            addCopyButtonsToMarkdownCode();
+        }
+
+        window.addEventListener("load", function () {
+            autoResize(textarea);
+            renderMarkdownBlocks();
+            window.scrollTo({ top: document.body.scrollHeight, behavior: "smooth" });
+        });
+
+        textarea.addEventListener("input", function () {
+            autoResize(textarea);
+        });
+
+        composerForm.addEventListener("submit", function () {
+            sendBtn.disabled = true;
+            sendBtn.innerText = "Sending...";
+        });
+    </script>
+</body>
+</html>
