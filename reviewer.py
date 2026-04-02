@@ -39,7 +39,7 @@ def _humanize_api_error(data: dict) -> str:
         return "LLM service error."
 
 
-def _call_openrouter(messages: list[dict], temperature: float = 0.3) -> dict:
+def _call_openrouter(messages: list[dict], temperature: float = 0.2) -> dict:
     last_error = None
 
     for _ in range(3):
@@ -375,6 +375,10 @@ def _failure_result(result: Dict[str, Any], message: str) -> Dict[str, Any]:
     return result
 
 
+def _contains_any(text: str, keywords: list[str]) -> bool:
+    return any(keyword in text for keyword in keywords)
+
+
 def _enforce_score_consistency(result: Dict[str, Any]) -> Dict[str, Any]:
     scores = result.get("scores", {})
     if not isinstance(scores, dict):
@@ -397,45 +401,123 @@ def _enforce_score_consistency(result: Dict[str, Any]) -> Dict[str, Any]:
     doc_text = " ".join(str(x) for x in documentation_issues).lower()
     all_issue_text = " ".join([bug_text, style_text, maintain_text, doc_text, summary])
 
-    if (
-        "syntaxerror" in all_issue_text
-        or "syntax error" in all_issue_text
-        or "invalid syntax" in all_issue_text
-        or "indentationerror" in all_issue_text
-        or "unindent" in all_issue_text
-    ):
+    has_syntax_error = _contains_any(
+        all_issue_text,
+        [
+            "syntaxerror",
+            "syntax error",
+            "invalid syntax",
+            "indentationerror",
+            "unindent does not match",
+            "expected an indented block",
+            "unexpected indent",
+            "parse error",
+            "compilation error",
+        ],
+    )
+
+    has_confirmed_runtime_failure = _contains_any(
+        bug_text,
+        [
+            "division by zero",
+            "zerodivisionerror",
+            "indexerror",
+            "typeerror",
+            "valueerror",
+            "arithmeticexception",
+            "nullpointerexception",
+            "will raise",
+            "raises ",
+            "guaranteed runtime",
+            "guaranteed failure",
+        ],
+    )
+
+    has_edge_case_failure = _contains_any(
+        all_issue_text,
+        [
+            "empty list",
+            "empty input",
+            "null input",
+            "common edge case",
+            "may fail",
+            "can fail",
+            "potential runtime error",
+        ],
+    )
+
+    has_readability_issue = (
+        bool(style_issues)
+        or _contains_any(
+            style_text,
+            [
+                "indent",
+                "format",
+                "formatting",
+                "naming",
+                "readability",
+                "mixed spaces",
+                "mixed tabs",
+                "unclear structure",
+            ],
+        )
+    )
+
+    has_maintainability_issue = (
+        bool(maintainability_issues)
+        or _contains_any(
+            maintain_text,
+            [
+                "no error handling",
+                "missing error handling",
+                "poor structure",
+                "hardcoded",
+                "duplicated",
+                "tight coupling",
+                "difficult to extend",
+                "no input validation",
+            ],
+        )
+    )
+
+    has_documentation_issue = (
+        bool(documentation_issues)
+        or _contains_any(
+            doc_text + " " + all_issue_text,
+            [
+                "docstring",
+                "documentation",
+                "missing comments",
+                "no comments",
+                "no documentation",
+                "missing jsdoc",
+                "missing javadoc",
+            ],
+        )
+    )
+
+    if has_syntax_error:
         correctness = min(correctness, 2.0)
 
-    if (
-        "zerodivisionerror" in all_issue_text
-        or "division by zero" in all_issue_text
-        or "runtime error" in all_issue_text
-        or "runtime exception" in all_issue_text
-        or "will raise" in all_issue_text
-        or "exception" in bug_text
-    ):
-        correctness = min(correctness, 2.0)
+    if has_confirmed_runtime_failure:
+        correctness = min(correctness, 2.5)
+    elif has_edge_case_failure:
+        correctness = min(correctness, 3.5)
 
-    if (
-        "indent" in style_text
-        or "format" in style_text
-        or "readability" in style_text
-        or "mixed spaces" in style_text
-        or "mixed tabs" in style_text
-    ):
-        readability = min(readability, 3.0)
+    if has_readability_issue:
+        readability = min(readability, 3.5)
+        if _contains_any(style_text, ["indent", "formatting", "mixed spaces", "mixed tabs"]):
+            readability = min(readability, 3.0)
 
-    if maintainability_issues:
-        maintainability = min(maintainability, 3.0)
+    if has_maintainability_issue:
+        maintainability = min(maintainability, 3.5)
+        if _contains_any(maintain_text, ["no error handling", "missing error handling", "no input validation"]):
+            maintainability = min(maintainability, 3.0)
 
-    if (
-        documentation_issues
-        or "docstring" in doc_text
-        or "documentation" in doc_text
-        or "no documentation" in all_issue_text
-        or "missing comments" in all_issue_text
-    ):
-        documentation_quality = min(documentation_quality, 2.0)
+    if has_documentation_issue:
+        documentation_quality = min(documentation_quality, 2.5)
+        if _contains_any(doc_text + " " + all_issue_text, ["docstring", "no documentation", "missing jsdoc", "missing javadoc"]):
+            documentation_quality = min(documentation_quality, 2.0)
 
     scores = {
         "correctness": round(correctness, 1),
@@ -444,7 +526,12 @@ def _enforce_score_consistency(result: Dict[str, Any]) -> Dict[str, Any]:
         "documentation_quality": round(documentation_quality, 1),
     }
     result["scores"] = scores
-    result["overall_score"] = round(sum(scores.values()) / 4, 1)
+
+    computed_overall = round(sum(scores.values()) / 4, 1)
+    if scores["correctness"] <= 2.0:
+        computed_overall = min(computed_overall, 2.5)
+
+    result["overall_score"] = computed_overall
     return result
 
 
@@ -529,12 +616,11 @@ def review_code_with_llm(
 
     try:
         prompt = f'''
-You are a senior software engineer and Python code reviewer.
+You are a senior software engineer and expert Python code reviewer.
 
-IMPORTANT LANGUAGE RULE:
-- Detect the user's language and reply in the SAME language.
-- If the user writes in Chinese, reply in Chinese.
-- If the user writes in English, reply in English.
+OUTPUT LANGUAGE RULE:
+- Always respond in English only.
+- Never reply in Chinese or any other language.
 
 Return VALID JSON only.
 
@@ -573,43 +659,53 @@ Additional strict rules:
 - summary must be a full sentence, not a single word
 - improved_code must be valid code or an empty string
 
+VERY IMPORTANT REVIEW RULES:
+- Report a syntax error ONLY if the code is actually syntactically invalid.
+- Do NOT call non-standard indentation a syntax error unless it truly makes the code invalid.
+- In Python, indentation that is non-PEP8 but internally consistent is a style/readability issue, not a syntax error.
+- Report a bug only for confirmed or highly likely functional problems.
+- Do NOT report missing type hints, missing docstrings, naming style, or non-pythonic style as bugs.
+- Put style issues in style_issues.
+- Put structure, validation, and extensibility concerns in maintainability_issues.
+- Put missing docstrings/comments in documentation_issues.
+- Be careful not to misclassify best-practice suggestions as correctness bugs.
+
 STRICT SCORING POLICY:
-- Scoring must be consistent with the issues found.
-- Start each dimension from 5 and deduct for real issues.
+- Start each dimension from 5 and deduct only for real issues.
 - Never give all 5s if any issue is reported.
 - Do not give 5 unless the code is close to production quality.
 - Scores must match the problems listed in bugs, style_issues, maintainability_issues, and documentation_issues.
 
 Correctness scoring:
-- Deduct heavily for syntax errors, guaranteed runtime exceptions, incorrect logic, unsafe behavior, or clearly broken behavior.
-- If there is any guaranteed runtime exception, correctness MUST be <= 2.
-- If there is a syntax error, correctness MUST be <= 2.
-- If the code may fail on common edge cases, correctness SHOULD be <= 3.
+- 5: Code is syntactically valid and works for normal expected inputs.
+- 4: Mostly correct, but has minor risks or misses some edge-case handling.
+- 3: Works for common cases but has a meaningful edge-case bug.
+- 2: Has a syntax error, guaranteed runtime failure, or serious logic problem.
+- 1: Fundamentally broken or non-executable.
 
 Readability scoring:
-- Deduct for inconsistent indentation, poor naming, confusing structure, long unclear blocks, or formatting problems.
-- If indentation is inconsistent or code layout is confusing, readability MUST be <= 3.
+- Deduct for inconsistent indentation, poor naming, unclear structure, or formatting problems.
+- Non-standard but valid indentation should reduce readability, not correctness.
 
 Maintainability scoring:
-- Deduct for missing error handling, duplicated logic, poor structure, tight coupling, magic values, or difficult-to-extend design.
-- If there is no error handling for risky operations, maintainability MUST be <= 3.
+- Deduct for missing validation, missing error handling for risky operations, duplicated logic, hardcoded values, poor structure, or difficult extension.
 
 Documentation quality scoring:
 - Deduct for missing docstrings, missing comments where explanation is needed, or unclear parameter/return behavior.
-- If there is no docstring and no useful comments, documentation_quality MUST be <= 2.
+- If there is no docstring and no useful comments, documentation_quality should usually be <= 2.
 
 Overall scoring:
 - overall_score must reflect the real quality level across dimensions.
 - If correctness <= 2, overall_score MUST be <= 2.5.
-- overall_score should not be higher than the general quality impression of the code.
+- Do not make overall_score higher than the average quality impression.
 
 Before finalizing the JSON, perform a consistency check:
-- If you reported a serious bug, reduce correctness.
-- If you reported formatting or indentation issues, reduce readability.
-- If you reported missing error handling or poor structure, reduce maintainability.
-- If you reported missing docstrings or comments, reduce documentation_quality.
-- Ensure the scores and the listed issues do not contradict each other.
-- Be conservative and realistic.
+- If you reported a real syntax error or guaranteed runtime failure, lower correctness.
+- If you reported formatting or indentation issues, lower readability.
+- If you reported missing validation or poor structure, lower maintainability.
+- If you reported missing docstrings or comments, lower documentation_quality.
+- Ensure the listed issues and scores do not contradict each other.
+- Be conservative, precise, and realistic.
 
 Rule-based analysis:
 {rule_summary}
@@ -623,9 +719,10 @@ Code:
                 "role": "system",
                 "content": (
                     "You are an expert Python code reviewer. "
-                    "Focus only on the current code and rule-based analysis. "
+                    "Focus only on the current code and the provided rule-based analysis. "
                     "Do not use prior review context for scoring. "
-                    "Always match the user's language."
+                    "Always respond in English. "
+                    "Be strict about accuracy and avoid false syntax-error claims."
                 ),
             }
         ]
@@ -689,10 +786,9 @@ def review_non_python_code_with_llm(
         prompt = f'''
 You are a senior multi-language code reviewer.
 
-IMPORTANT LANGUAGE RULE:
-- Detect the user's language and reply in the SAME language.
-- If the user writes in Chinese, reply in Chinese.
-- If the user writes in English, reply in English.
+OUTPUT LANGUAGE RULE:
+- Always respond in English only.
+- Never reply in Chinese or any other language.
 
 Return VALID JSON only.
 
@@ -731,42 +827,50 @@ Additional strict rules:
 - summary must be a full sentence, not a single word
 - improved_code must be valid code or an empty string
 
+VERY IMPORTANT REVIEW RULES:
+- Report a syntax/parse/compile error ONLY if the code is actually invalid in that language.
+- Do NOT treat mere style-guide violations as syntax errors.
+- Report a bug only for confirmed or highly likely functional problems.
+- Do NOT report naming, missing type hints, missing comments, or formatting alone as bugs.
+- Put formatting and naming in style_issues.
+- Put validation, structure, robustness, and extensibility concerns in maintainability_issues.
+- Put missing docs/comments/JSDoc/Javadoc in documentation_issues.
+- Be careful not to misclassify best-practice suggestions as correctness bugs.
+
 STRICT SCORING POLICY:
-- Scoring must be consistent with the issues found.
-- Start each dimension from 5 and deduct for real issues.
+- Start each dimension from 5 and deduct only for real issues.
 - Never give all 5s if any issue is reported.
 - Do not give 5 unless the code is close to production quality.
 - Scores must match the problems listed in bugs, style_issues, maintainability_issues, and documentation_issues.
 
 Correctness scoring:
-- Deduct heavily for syntax errors, runtime errors, invalid queries, wrong logic, unsafe behavior, or guaranteed failures.
-- If there is any guaranteed failure or major bug, correctness MUST be <= 2.
-- If the code may fail under common or realistic cases, correctness SHOULD be <= 3.
+- 5: Code is syntactically valid and works for normal expected use.
+- 4: Mostly correct, but has minor risks or misses some edge-case handling.
+- 3: Works for common cases but has a meaningful edge-case bug.
+- 2: Has a syntax/parse error, guaranteed runtime failure, invalid query, or serious logic problem.
+- 1: Fundamentally broken.
 
 Readability scoring:
 - Deduct for inconsistent formatting, poor naming, unclear structure, or confusing layout.
-- If formatting is clearly inconsistent, readability MUST be <= 3.
 
 Maintainability scoring:
-- Deduct for lack of error handling, hardcoded values, duplicated logic, poor modularity, or difficult-to-extend code.
-- If risky operations have no safeguards, maintainability MUST be <= 3.
+- Deduct for lack of validation/error handling for risky operations, duplicated logic, hardcoded values, poor modularity, or difficult extension.
 
 Documentation quality scoring:
-- Deduct for missing comments, missing explanation, or unclear intent where documentation is needed.
-- If there is no meaningful documentation at all, documentation_quality MUST be <= 2.
+- Deduct for missing comments, missing explanation, missing JSDoc/Javadoc/docstrings, or unclear intent where documentation is needed.
 
 Overall scoring:
 - overall_score must reflect the actual quality level across dimensions.
 - If correctness <= 2, overall_score MUST be <= 2.5.
-- overall_score should not be higher than the general quality impression of the code.
+- Do not make overall_score higher than the average quality impression.
 
 Before finalizing the JSON, perform a consistency check:
-- If you reported a serious bug, reduce correctness.
-- If you reported formatting or indentation issues, reduce readability.
-- If you reported missing error handling or poor structure, reduce maintainability.
-- If you reported missing comments or explanation, reduce documentation_quality.
-- Ensure the scores and the listed issues do not contradict each other.
-- Be conservative and realistic.
+- If you reported a real syntax/parse/compile error or guaranteed runtime failure, lower correctness.
+- If you reported formatting or naming issues, lower readability.
+- If you reported missing validation or poor structure, lower maintainability.
+- If you reported missing comments or explanation, lower documentation_quality.
+- Ensure the listed issues and scores do not contradict each other.
+- Be conservative, precise, and realistic.
 
 Code:
 {code}
@@ -779,7 +883,8 @@ Code:
                     "You are an expert programming reviewer for Python, JavaScript, Java, SQL, C/C++, HTML, CSS, and other common languages. "
                     "Focus only on the current code. "
                     "Do not use prior review context for scoring. "
-                    "Always match the user's language."
+                    "Always respond in English. "
+                    "Be strict about accuracy and avoid false syntax-error claims."
                 ),
             }
         ]
@@ -840,11 +945,11 @@ def chat_with_llm(user_input: str, history: List[dict] | None = None) -> Dict[st
             {
                 "role": "system",
                 "content": (
-                    "You are a helpful multi-language coding assistant. "
+                    "You are a helpful coding assistant. "
                     "You can answer natural language questions, explain programming concepts, "
                     "and generate code in Python, JavaScript, Java, SQL, C/C++, HTML, CSS, and more. "
                     "If the user asks for code, provide runnable code and a short explanation. "
-                    "Always answer in the same language as the user's latest message."
+                    "Always answer in English only."
                 ),
             }
         ]
