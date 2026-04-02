@@ -375,6 +375,80 @@ def _failure_result(result: Dict[str, Any], message: str) -> Dict[str, Any]:
     return result
 
 
+def _enforce_score_consistency(result: Dict[str, Any]) -> Dict[str, Any]:
+    scores = result.get("scores", {})
+    if not isinstance(scores, dict):
+        return result
+
+    correctness = _normalize_score(scores.get("correctness", 3))
+    readability = _normalize_score(scores.get("readability", 3))
+    maintainability = _normalize_score(scores.get("maintainability", 3))
+    documentation_quality = _normalize_score(scores.get("documentation_quality", 3))
+
+    bugs = result.get("bugs", []) or []
+    style_issues = result.get("style_issues", []) or []
+    maintainability_issues = result.get("maintainability_issues", []) or []
+    documentation_issues = result.get("documentation_issues", []) or []
+    summary = str(result.get("summary", "")).lower()
+
+    bug_text = " ".join(str(x) for x in bugs).lower()
+    style_text = " ".join(str(x) for x in style_issues).lower()
+    maintain_text = " ".join(str(x) for x in maintainability_issues).lower()
+    doc_text = " ".join(str(x) for x in documentation_issues).lower()
+    all_issue_text = " ".join([bug_text, style_text, maintain_text, doc_text, summary])
+
+    if (
+        "syntaxerror" in all_issue_text
+        or "syntax error" in all_issue_text
+        or "invalid syntax" in all_issue_text
+        or "indentationerror" in all_issue_text
+        or "unindent" in all_issue_text
+    ):
+        correctness = min(correctness, 2.0)
+
+    if (
+        "zerodivisionerror" in all_issue_text
+        or "division by zero" in all_issue_text
+        or "runtime error" in all_issue_text
+        or "runtime exception" in all_issue_text
+        or "will raise" in all_issue_text
+        or "exception" in bug_text
+    ):
+        correctness = min(correctness, 2.0)
+
+    if (
+        "indent" in style_text
+        or "format" in style_text
+        or "readability" in style_text
+        or "mixed spaces" in style_text
+        or "mixed tabs" in style_text
+    ):
+        readability = min(readability, 3.0)
+
+    if maintainability_issues:
+        maintainability = min(maintainability, 3.0)
+
+    if (
+        documentation_issues
+        or "docstring" in doc_text
+        or "documentation" in doc_text
+        or "no documentation" in all_issue_text
+        or "missing comments" in all_issue_text
+    ):
+        documentation_quality = min(documentation_quality, 2.0)
+
+    scores = {
+        "correctness": round(correctness, 1),
+        "readability": round(readability, 1),
+        "maintainability": round(maintainability, 1),
+        "documentation_quality": round(documentation_quality, 1),
+    }
+    result["scores"] = scores
+
+    result["overall_score"] = round(sum(scores.values()) / 4, 1)
+    return result
+
+
 def review_code_with_llm(
     code: str,
     mode: str,
@@ -479,15 +553,15 @@ Code:
                 "role": "system",
                 "content": (
                     "You are an expert Python code reviewer. "
-                    "Use recent conversation context when helpful, but focus on the current code. "
+                    "Focus only on the current code and rule-based analysis. "
+                    "Do not use prior review context for scoring. "
                     "Always match the user's language."
                 ),
             }
         ]
-        messages.extend(_build_context_messages(history or []))
         messages.append({"role": "user", "content": prompt})
 
-        data = _call_openrouter(messages=messages, temperature=0.2)
+        data = _call_openrouter(messages=messages, temperature=0)
 
         if "choices" not in data:
             return _failure_result(result, _humanize_api_error(data))
@@ -531,6 +605,7 @@ Code:
         else:
             result["overall_score"] = _normalize_score(overall_from_model)
 
+        result = _enforce_score_consistency(result)
         return result
 
     except Exception as e:
@@ -636,14 +711,15 @@ Code:
                 "role": "system",
                 "content": (
                     "You are an expert programming reviewer for Python, JavaScript, Java, SQL, C/C++, HTML, CSS, and other common languages. "
+                    "Focus only on the current code. "
+                    "Do not use prior review context for scoring. "
                     "Always match the user's language."
                 ),
             }
         ]
-        messages.extend(_build_context_messages(history or []))
         messages.append({"role": "user", "content": prompt})
 
-        data = _call_openrouter(messages=messages, temperature=0.2)
+        data = _call_openrouter(messages=messages, temperature=0)
 
         if "choices" not in data:
             return _failure_result(result, _humanize_api_error(data))
@@ -687,6 +763,7 @@ Code:
         else:
             result["overall_score"] = _normalize_score(overall_from_model)
 
+        result = _enforce_score_consistency(result)
         return result
 
     except Exception as e:
