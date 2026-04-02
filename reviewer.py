@@ -444,9 +444,79 @@ def _enforce_score_consistency(result: Dict[str, Any]) -> Dict[str, Any]:
         "documentation_quality": round(documentation_quality, 1),
     }
     result["scores"] = scores
-
     result["overall_score"] = round(sum(scores.values()) / 4, 1)
     return result
+
+
+def _is_placeholder_result(parsed: dict) -> bool:
+    if not isinstance(parsed, dict):
+        return True
+
+    summary = str(parsed.get("summary", "")).strip().lower()
+    bugs = parsed.get("bugs", [])
+    style_issues = parsed.get("style_issues", [])
+    maintainability_issues = parsed.get("maintainability_issues", [])
+    documentation_issues = parsed.get("documentation_issues", [])
+    suggestions = parsed.get("suggestions", [])
+    improved_code = str(parsed.get("improved_code", "")).strip()
+    scores = parsed.get("scores", {})
+
+    has_any_content = any([
+        bugs,
+        style_issues,
+        maintainability_issues,
+        documentation_issues,
+        suggestions,
+        improved_code,
+    ])
+
+    if not isinstance(scores, dict) or not scores:
+        return True
+
+    default_like_scores = (
+        str(scores.get("correctness")) in {"3", "3.0"} and
+        str(scores.get("readability")) in {"3", "3.0"} and
+        str(scores.get("maintainability")) in {"3", "3.0"} and
+        str(scores.get("documentation_quality")) in {"3", "3.0"}
+    )
+
+    if summary in {"", "review completed.", "review completed"} and not has_any_content:
+        return True
+
+    if default_like_scores and not has_any_content:
+        return True
+
+    return False
+
+
+def _call_review_with_retry(messages: list[dict], max_attempts: int = 3) -> dict:
+    last_error = None
+
+    for _ in range(max_attempts):
+        data = _call_openrouter(messages=messages, temperature=0)
+
+        if "choices" not in data:
+            last_error = data
+            continue
+
+        content = _extract_content(data)
+        if not content:
+            last_error = {"error": {"message": "LLM returned empty content."}}
+            continue
+
+        try:
+            parsed = _parse_json_safely(content)
+        except Exception as e:
+            last_error = {"error": {"message": f"JSON parsing failed: {str(e)}"}}
+            continue
+
+        if _is_placeholder_result(parsed):
+            last_error = {"error": {"message": "LLM returned placeholder/incomplete review content."}}
+            continue
+
+        return {"parsed": parsed}
+
+    return last_error or {"error": {"message": "LLM failed after retries."}}
 
 
 def review_code_with_llm(
@@ -561,20 +631,16 @@ Code:
         ]
         messages.append({"role": "user", "content": prompt})
 
-        data = _call_openrouter(messages=messages, temperature=0)
+        review_data = _call_review_with_retry(messages=messages, max_attempts=3)
 
-        if "choices" not in data:
-            return _failure_result(result, _humanize_api_error(data))
+        if "parsed" not in review_data:
+            return _failure_result(result, _humanize_api_error(review_data))
 
-        content = _extract_content(data)
-        if not content:
-            return _failure_result(result, "LLM returned empty content.")
-
-        parsed = _parse_json_safely(content)
+        parsed = review_data["parsed"]
 
         result["summary"] = _normalize_single_text(
             parsed.get("summary", ""),
-            fallback="Review completed."
+            fallback="LLM returned incomplete review content."
         )
         result["bugs"] = _normalize_text_list(parsed.get("bugs", []))
         result["style_issues"] = _normalize_text_list(parsed.get("style_issues", []))
@@ -719,20 +785,16 @@ Code:
         ]
         messages.append({"role": "user", "content": prompt})
 
-        data = _call_openrouter(messages=messages, temperature=0)
+        review_data = _call_review_with_retry(messages=messages, max_attempts=3)
 
-        if "choices" not in data:
-            return _failure_result(result, _humanize_api_error(data))
+        if "parsed" not in review_data:
+            return _failure_result(result, _humanize_api_error(review_data))
 
-        content = _extract_content(data)
-        if not content:
-            return _failure_result(result, "LLM returned empty content.")
-
-        parsed = _parse_json_safely(content)
+        parsed = review_data["parsed"]
 
         result["summary"] = _normalize_single_text(
             parsed.get("summary", ""),
-            fallback="Review completed."
+            fallback="LLM returned incomplete review content."
         )
         result["bugs"] = _normalize_text_list(parsed.get("bugs", []))
         result["style_issues"] = _normalize_text_list(parsed.get("style_issues", []))
