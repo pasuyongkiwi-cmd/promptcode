@@ -429,6 +429,44 @@ Additional strict rules:
 - summary must be a full sentence, not a single word
 - improved_code must be valid code or an empty string
 
+STRICT SCORING POLICY:
+- Scoring must be consistent with the issues found.
+- Start each dimension from 5 and deduct for real issues.
+- Never give all 5s if any issue is reported.
+- Do not give 5 unless the code is close to production quality.
+- Scores must match the problems listed in bugs, style_issues, maintainability_issues, and documentation_issues.
+
+Correctness scoring:
+- Deduct heavily for syntax errors, guaranteed runtime exceptions, incorrect logic, unsafe behavior, or clearly broken behavior.
+- If there is any guaranteed runtime exception, correctness MUST be <= 2.
+- If there is a syntax error, correctness MUST be <= 2.
+- If the code may fail on common edge cases, correctness SHOULD be <= 3.
+
+Readability scoring:
+- Deduct for inconsistent indentation, poor naming, confusing structure, long unclear blocks, or formatting problems.
+- If indentation is inconsistent or code layout is confusing, readability MUST be <= 3.
+
+Maintainability scoring:
+- Deduct for missing error handling, duplicated logic, poor structure, tight coupling, magic values, or difficult-to-extend design.
+- If there is no error handling for risky operations, maintainability MUST be <= 3.
+
+Documentation quality scoring:
+- Deduct for missing docstrings, missing comments where explanation is needed, or unclear parameter/return behavior.
+- If there is no docstring and no useful comments, documentation_quality MUST be <= 2.
+
+Overall scoring:
+- overall_score must reflect the real quality level across dimensions.
+- If correctness <= 2, overall_score MUST be <= 2.5.
+- overall_score should not be higher than the general quality impression of the code.
+
+Before finalizing the JSON, perform a consistency check:
+- If you reported a serious bug, reduce correctness.
+- If you reported formatting or indentation issues, reduce readability.
+- If you reported missing error handling or poor structure, reduce maintainability.
+- If you reported missing docstrings or comments, reduce documentation_quality.
+- Ensure the scores and the listed issues do not contradict each other.
+- Be conservative and realistic.
+
 Rule-based analysis:
 {rule_summary}
 
@@ -551,6 +589,43 @@ Additional strict rules:
 - Do NOT return "None", "Good", "Correct", or similar placeholders
 - summary must be a full sentence, not a single word
 - improved_code must be valid code or an empty string
+
+STRICT SCORING POLICY:
+- Scoring must be consistent with the issues found.
+- Start each dimension from 5 and deduct for real issues.
+- Never give all 5s if any issue is reported.
+- Do not give 5 unless the code is close to production quality.
+- Scores must match the problems listed in bugs, style_issues, maintainability_issues, and documentation_issues.
+
+Correctness scoring:
+- Deduct heavily for syntax errors, runtime errors, invalid queries, wrong logic, unsafe behavior, or guaranteed failures.
+- If there is any guaranteed failure or major bug, correctness MUST be <= 2.
+- If the code may fail under common or realistic cases, correctness SHOULD be <= 3.
+
+Readability scoring:
+- Deduct for inconsistent formatting, poor naming, unclear structure, or confusing layout.
+- If formatting is clearly inconsistent, readability MUST be <= 3.
+
+Maintainability scoring:
+- Deduct for lack of error handling, hardcoded values, duplicated logic, poor modularity, or difficult-to-extend code.
+- If risky operations have no safeguards, maintainability MUST be <= 3.
+
+Documentation quality scoring:
+- Deduct for missing comments, missing explanation, or unclear intent where documentation is needed.
+- If there is no meaningful documentation at all, documentation_quality MUST be <= 2.
+
+Overall scoring:
+- overall_score must reflect the actual quality level across dimensions.
+- If correctness <= 2, overall_score MUST be <= 2.5.
+- overall_score should not be higher than the general quality impression of the code.
+
+Before finalizing the JSON, perform a consistency check:
+- If you reported a serious bug, reduce correctness.
+- If you reported formatting or indentation issues, reduce readability.
+- If you reported missing error handling or poor structure, reduce maintainability.
+- If you reported missing comments or explanation, reduce documentation_quality.
+- Ensure the scores and the listed issues do not contradict each other.
+- Be conservative and realistic.
 
 Code:
 {code}

@@ -415,17 +415,6 @@
             font-style: italic;
         }
 
-        .empty-state {
-            margin: 0;
-            color: var(--muted);
-            font-size: 14px;
-            line-height: 1.7;
-            background: #ffffff;
-            border: 1px dashed #d1d5db;
-            border-radius: 12px;
-            padding: 12px 14px;
-        }
-
         .composer-wrap {
             position: fixed;
             left: 50%;
@@ -669,7 +658,7 @@
                     {% else %}
                     <section class="summary-box">
                         <h3>Summary</h3>
-                        <p>{{ item.result.summary or "Review completed." }}</p>
+                        <p>{{ item.result.summary }}</p>
                     </section>
 
                     <div class="score-grid">
@@ -698,80 +687,56 @@
                     <div class="analysis-grid">
                         <section class="mini-panel">
                             <h3>Bugs</h3>
-                            {% if item.result.bugs %}
                             <ul class="clean-list">
                                 {% for b in item.result.bugs %}
                                 <li>{{ b }}</li>
                                 {% endfor %}
                             </ul>
-                            {% else %}
-                            <p class="empty-state">No bugs found.</p>
-                            {% endif %}
                         </section>
 
                         <section class="mini-panel">
                             <h3>Style Issues</h3>
-                            {% if item.result.style_issues %}
                             <ul class="clean-list">
                                 {% for s in item.result.style_issues %}
                                 <li>{{ s }}</li>
                                 {% endfor %}
                             </ul>
-                            {% else %}
-                            <p class="empty-state">No style issues found.</p>
-                            {% endif %}
                         </section>
 
                         <section class="mini-panel">
                             <h3>Maintainability Issues</h3>
-                            {% if item.result.maintainability_issues %}
                             <ul class="clean-list">
                                 {% for m in item.result.maintainability_issues %}
                                 <li>{{ m }}</li>
                                 {% endfor %}
                             </ul>
-                            {% else %}
-                            <p class="empty-state">No maintainability issues found.</p>
-                            {% endif %}
                         </section>
 
                         <section class="mini-panel">
                             <h3>Documentation Issues</h3>
-                            {% if item.result.documentation_issues %}
                             <ul class="clean-list">
                                 {% for d in item.result.documentation_issues %}
                                 <li>{{ d }}</li>
                                 {% endfor %}
                             </ul>
-                            {% else %}
-                            <p class="empty-state">No documentation issues found.</p>
-                            {% endif %}
                         </section>
                     </div>
 
                     <section class="wide-panel">
                         <h3>Suggestions</h3>
-                        {% if item.result.suggestions %}
                         <ul class="clean-list">
                             {% for s in item.result.suggestions %}
                             <li>{{ s }}</li>
                             {% endfor %}
                         </ul>
-                        {% else %}
-                        <p class="empty-state">No suggestions available.</p>
-                        {% endif %}
                     </section>
 
                     <section class="wide-panel">
                         <h3>Improved Code</h3>
-                        {% if item.result.improved_code %}
                         <div class="code-wrap">
                             <button class="copy-btn" type="button" onclick="copyText(this)">Copy</button>
                             <pre class="code-block">{{ item.result.improved_code }}</pre>
                         </div>
-                        {% else %}
-                        <p class="empty-state">No revised code available.</p>
-                        {% endif %}
                     </section>
                     {% endif %}
                 </section>
