@@ -12,6 +12,13 @@ load_dotenv()
 
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 
+FREE_MODELS = [
+    "openai/gpt-oss-20b",
+    "meta-llama/llama-3.1-8b-instruct",
+    "google/gemma-4-26b-a4b-it",
+    "qwen/qwen3.6-plus:free",
+]
+
 
 def _humanize_api_error(data: dict) -> str:
     try:
@@ -39,7 +46,7 @@ def _humanize_api_error(data: dict) -> str:
         return "LLM service error."
 
 
-def _call_openrouter(messages: list[dict], temperature: float = 0.2) -> dict:
+def _call_openrouter(messages: list[dict], temperature: float = 0.2, model: str = "openrouter/free") -> dict:
     last_error = None
 
     for _ in range(3):
@@ -51,7 +58,7 @@ def _call_openrouter(messages: list[dict], temperature: float = 0.2) -> dict:
                     "Content-Type": "application/json",
                 },
                 json={
-                    "model": "openrouter/free",
+                    "model": model,
                     "messages": messages,
                     "temperature": temperature,
                 },
@@ -131,6 +138,24 @@ def _call_openrouter(messages: list[dict], temperature: float = 0.2) -> dict:
     return last_error or {"error": {"message": "Unknown error"}}
 
 
+def _call_openrouter_multi(messages: list[dict], temperature: float = 0.2) -> list[dict]:
+    results = []
+
+    for model in FREE_MODELS:
+        data = _call_openrouter(messages=messages, temperature=temperature, model=model)
+        content = _extract_content(data) if isinstance(data, dict) and "choices" in data else ""
+
+        results.append(
+            {
+                "model": model,
+                "raw": data,
+                "content": content,
+            }
+        )
+
+    return results
+
+
 def _extract_content(data: dict) -> str:
     try:
         choices = data.get("choices", [])
@@ -173,7 +198,17 @@ def _build_context_messages(history: List[dict], limit: int = 6) -> list[dict]:
     recent = history[-limit:] if history else []
     for item in recent:
         user_text = item.get("user_code", "")
-        assistant_text = item.get("result", {}).get("summary", "")
+        assistant_text = ""
+
+        result = item.get("result", {})
+        if isinstance(result, dict):
+            assistant_text = result.get("summary", "")
+        elif isinstance(result, list) and result:
+            first_item = result[0]
+            if isinstance(first_item, dict):
+                inner_result = first_item.get("result", {})
+                if isinstance(inner_result, dict):
+                    assistant_text = inner_result.get("summary", "")
 
         if user_text:
             context_messages.append({"role": "user", "content": user_text})
@@ -606,14 +641,98 @@ def _call_review_with_retry(messages: list[dict], max_attempts: int = 3) -> dict
     return last_error or {"error": {"message": "LLM failed after retries."}}
 
 
+def _build_multi_model_review_results(messages: list[dict]) -> list[dict]:
+    multi_results = _call_openrouter_multi(messages=messages, temperature=0)
+    all_results = []
+
+    for item in multi_results:
+        model_name = item.get("model", "unknown-model")
+        raw_data = item.get("raw", {})
+        content = item.get("content", "")
+
+        if not content:
+            error_message = _humanize_api_error(raw_data) if isinstance(raw_data, dict) else "No response"
+            all_results.append(
+                {
+                    "model": model_name,
+                    "result": _failure_result(empty_llm_result(), error_message),
+                }
+            )
+            continue
+
+        try:
+            parsed = _parse_json_safely(content)
+        except Exception:
+            all_results.append(
+                {
+                    "model": model_name,
+                    "result": _failure_result(empty_llm_result(), "JSON parse failed"),
+                }
+            )
+            continue
+
+        if _is_placeholder_result(parsed):
+            all_results.append(
+                {
+                    "model": model_name,
+                    "result": _failure_result(empty_llm_result(), "LLM returned placeholder/incomplete review content."),
+                }
+            )
+            continue
+
+        temp_result = empty_llm_result()
+
+        temp_result["summary"] = _normalize_single_text(
+            parsed.get("summary", ""),
+            fallback="LLM returned incomplete review content."
+        )
+        temp_result["bugs"] = _normalize_text_list(parsed.get("bugs", []))
+        temp_result["style_issues"] = _normalize_text_list(parsed.get("style_issues", []))
+        temp_result["maintainability_issues"] = _normalize_text_list(parsed.get("maintainability_issues", []))
+        temp_result["documentation_issues"] = _normalize_text_list(parsed.get("documentation_issues", []))
+        temp_result["suggestions"] = _normalize_text_list(parsed.get("suggestions", []))
+
+        improved_code = _normalize_single_text(parsed.get("improved_code", ""), fallback="")
+        temp_result["improved_code"] = "" if improved_code.lower() in {"good", "none"} else improved_code
+        temp_result["generated_doc"] = _normalize_single_text(parsed.get("generated_doc", ""), fallback="")
+
+        normalized_scores = _normalize_scores(
+            parsed.get(
+                "scores",
+                {
+                    "correctness": 3,
+                    "readability": 3,
+                    "maintainability": 3,
+                    "documentation_quality": 3,
+                },
+            )
+        )
+        temp_result["scores"] = normalized_scores
+
+        overall_from_model = parsed.get("overall_score", None)
+        if overall_from_model is None:
+            temp_result["overall_score"] = round(sum(normalized_scores.values()) / 4, 1)
+        else:
+            temp_result["overall_score"] = _normalize_score(overall_from_model)
+
+        temp_result = _enforce_score_consistency(temp_result)
+
+        all_results.append(
+            {
+                "model": model_name,
+                "result": temp_result,
+            }
+        )
+
+    return all_results
+
+
 def review_code_with_llm(
     code: str,
     mode: str,
     rule_summary: Dict[str, Any],
     history: List[dict] | None = None,
 ) -> Dict[str, Any]:
-    result = empty_llm_result()
-
     try:
         prompt = f'''
 You are a senior software engineer and expert Python code reviewer.
@@ -728,51 +847,19 @@ Code:
         ]
         messages.append({"role": "user", "content": prompt})
 
-        review_data = _call_review_with_retry(messages=messages, max_attempts=3)
-
-        if "parsed" not in review_data:
-            return _failure_result(result, _humanize_api_error(review_data))
-
-        parsed = review_data["parsed"]
-
-        result["summary"] = _normalize_single_text(
-            parsed.get("summary", ""),
-            fallback="LLM returned incomplete review content."
-        )
-        result["bugs"] = _normalize_text_list(parsed.get("bugs", []))
-        result["style_issues"] = _normalize_text_list(parsed.get("style_issues", []))
-        result["maintainability_issues"] = _normalize_text_list(parsed.get("maintainability_issues", []))
-        result["documentation_issues"] = _normalize_text_list(parsed.get("documentation_issues", []))
-        result["suggestions"] = _normalize_text_list(parsed.get("suggestions", []))
-
-        improved_code = _normalize_single_text(parsed.get("improved_code", ""), fallback="")
-        result["improved_code"] = "" if improved_code.lower() in {"good", "none"} else improved_code
-        result["generated_doc"] = _normalize_single_text(parsed.get("generated_doc", ""), fallback="")
-
-        normalized_scores = _normalize_scores(
-            parsed.get(
-                "scores",
-                {
-                    "correctness": 3,
-                    "readability": 3,
-                    "maintainability": 3,
-                    "documentation_quality": 3,
-                },
-            )
-        )
-        result["scores"] = normalized_scores
-
-        overall_from_model = parsed.get("overall_score", None)
-        if overall_from_model is None:
-            result["overall_score"] = round(sum(normalized_scores.values()) / 4, 1)
-        else:
-            result["overall_score"] = _normalize_score(overall_from_model)
-
-        result = _enforce_score_consistency(result)
-        return result
+        multi_review_results = _build_multi_model_review_results(messages)
+        return {"multi": multi_review_results}
 
     except Exception as e:
-        return _failure_result(result, f"LLM call failed or JSON parsing failed: {str(e)}")
+        fallback_results = []
+        for model in FREE_MODELS:
+            fallback_results.append(
+                {
+                    "model": model,
+                    "result": _failure_result(empty_llm_result(), f"LLM call failed or JSON parsing failed: {str(e)}"),
+                }
+            )
+        return {"multi": fallback_results}
 
 
 def review_non_python_code_with_llm(
@@ -780,8 +867,6 @@ def review_non_python_code_with_llm(
     language: str,
     history: List[dict] | None = None,
 ) -> Dict[str, Any]:
-    result = empty_llm_result()
-
     try:
         prompt = f'''
 You are a senior multi-language code reviewer.
@@ -890,51 +975,19 @@ Code:
         ]
         messages.append({"role": "user", "content": prompt})
 
-        review_data = _call_review_with_retry(messages=messages, max_attempts=3)
-
-        if "parsed" not in review_data:
-            return _failure_result(result, _humanize_api_error(review_data))
-
-        parsed = review_data["parsed"]
-
-        result["summary"] = _normalize_single_text(
-            parsed.get("summary", ""),
-            fallback="LLM returned incomplete review content."
-        )
-        result["bugs"] = _normalize_text_list(parsed.get("bugs", []))
-        result["style_issues"] = _normalize_text_list(parsed.get("style_issues", []))
-        result["maintainability_issues"] = _normalize_text_list(parsed.get("maintainability_issues", []))
-        result["documentation_issues"] = _normalize_text_list(parsed.get("documentation_issues", []))
-        result["suggestions"] = _normalize_text_list(parsed.get("suggestions", []))
-
-        improved_code = _normalize_single_text(parsed.get("improved_code", ""), fallback="")
-        result["improved_code"] = "" if improved_code.lower() in {"good", "none"} else improved_code
-        result["generated_doc"] = _normalize_single_text(parsed.get("generated_doc", ""), fallback="")
-
-        normalized_scores = _normalize_scores(
-            parsed.get(
-                "scores",
-                {
-                    "correctness": 3,
-                    "readability": 3,
-                    "maintainability": 3,
-                    "documentation_quality": 3,
-                },
-            )
-        )
-        result["scores"] = normalized_scores
-
-        overall_from_model = parsed.get("overall_score", None)
-        if overall_from_model is None:
-            result["overall_score"] = round(sum(normalized_scores.values()) / 4, 1)
-        else:
-            result["overall_score"] = _normalize_score(overall_from_model)
-
-        result = _enforce_score_consistency(result)
-        return result
+        multi_review_results = _build_multi_model_review_results(messages)
+        return {"multi": multi_review_results}
 
     except Exception as e:
-        return _failure_result(result, f"LLM call failed or JSON parsing failed: {str(e)}")
+        fallback_results = []
+        for model in FREE_MODELS:
+            fallback_results.append(
+                {
+                    "model": model,
+                    "result": _failure_result(empty_llm_result(), f"LLM call failed or JSON parsing failed: {str(e)}"),
+                }
+            )
+        return {"multi": fallback_results}
 
 
 def chat_with_llm(user_input: str, history: List[dict] | None = None) -> Dict[str, Any]:

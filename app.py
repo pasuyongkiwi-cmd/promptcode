@@ -67,7 +67,7 @@ def detect_language(text: str) -> str:
     if "console.log(" in lowered or "function " in lowered or "const " in lowered or "let " in lowered:
         return "javascript"
 
-    if lowered.startswith("select ") or " insert into " in lowered or "create table " in lowered or " from " in lowered and " where " in lowered:
+    if lowered.startswith("select ") or " insert into " in lowered or "create table " in lowered or (" from " in lowered and " where " in lowered):
         return "sql"
 
     if "<html" in lowered or "<div" in lowered or "<body" in lowered or "</html>" in lowered:
@@ -82,6 +82,51 @@ def detect_language(text: str) -> str:
     return "text"
 
 
+def build_multi_model_results(llm_result, rule_summary=None):
+    """
+    Normalize reviewer output into a list:
+    [
+        {"model": "...", "result": {...}},
+        ...
+    ]
+    """
+    if isinstance(llm_result, dict) and "multi" in llm_result:
+        items = llm_result["multi"]
+        normalized = []
+
+        for item in items:
+            model_name = item.get("model", "unknown-model")
+            model_result = item.get("result", empty_llm_result())
+
+            if rule_summary and isinstance(model_result, dict):
+                merged = merge_review_results(model_result, rule_summary)
+            else:
+                merged = model_result
+
+            normalized.append({
+                "model": model_name,
+                "result": merged
+            })
+
+        return normalized
+
+    if isinstance(llm_result, dict):
+        single_result = merge_review_results(llm_result, rule_summary) if rule_summary else llm_result
+        return [
+            {
+                "model": "single-model",
+                "result": single_result
+            }
+        ]
+
+    return [
+        {
+            "model": "single-model",
+            "result": empty_llm_result()
+        }
+    ]
+
+
 @app.route("/", methods=["GET", "POST"])
 def index():
     history = get_history()
@@ -90,7 +135,8 @@ def index():
         action = request.form.get("action", "send")
 
         if action == "clear":
-            CHAT_STORE[session["chat_session_id"]] = []
+            if "chat_session_id" in session:
+                CHAT_STORE[session["chat_session_id"]] = []
             return render_template(
                 "index.html",
                 history=[],
@@ -166,7 +212,7 @@ def index():
 
             detected_language = detect_language(user_input)
 
-            # Python: rule-based + LLM
+            # Python: rule-based + 4 LLMs
             if detected_language == "python":
                 actual_mode = "full"
 
@@ -189,7 +235,7 @@ def index():
                     history=history,
                 )
 
-                final_result = merge_review_results(llm_result, rule_summary)
+                final_result = build_multi_model_results(llm_result, rule_summary)
 
                 history.append(
                     {
@@ -205,12 +251,14 @@ def index():
                     }
                 )
             else:
-                # Other languages: LLM review only
-                final_result = review_non_python_code_with_llm(
+                # Other languages: 4 LLMs
+                llm_result = review_non_python_code_with_llm(
                     code=user_input,
                     language=detected_language,
                     history=history,
                 )
+
+                final_result = build_multi_model_results(llm_result, rule_summary=None)
 
                 history.append(
                     {
@@ -257,7 +305,8 @@ def index():
                 rule_summary=rule_summary,
                 history=history,
             )
-            final_result = merge_review_results(llm_result, rule_summary)
+
+            final_result = build_multi_model_results(llm_result, rule_summary)
 
             history.append(
                 {
@@ -273,11 +322,13 @@ def index():
                 }
             )
         else:
-            final_result = review_non_python_code_with_llm(
+            llm_result = review_non_python_code_with_llm(
                 code=user_input,
                 language=detected_language,
                 history=history,
             )
+
+            final_result = build_multi_model_results(llm_result, rule_summary=None)
 
             history.append(
                 {
@@ -308,8 +359,6 @@ def index():
         mode="auto",
         error=None,
     )
-
-
 
 
 if __name__ == "__main__":

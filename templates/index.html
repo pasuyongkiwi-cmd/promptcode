@@ -42,7 +42,7 @@
         }
 
         .page {
-            max-width: 1000px;
+            max-width: 1280px;
             margin: 0 auto;
             padding: 28px 18px 24px;
         }
@@ -114,7 +114,8 @@
         .summary-box,
         .wide-panel,
         .score-box,
-        .chat-panel {
+        .chat-panel,
+        .model-card {
             background: var(--panel);
             border: 1px solid var(--line);
             border-radius: var(--radius);
@@ -190,25 +191,7 @@
             position: relative;
         }
 
-        .copy-btn {
-            position: absolute;
-            top: 8px;
-            right: 8px;
-            background: #f6f8fa;
-            color: #24292f;
-            border: 1px solid #d0d7de;
-            padding: 6px 10px;
-            border-radius: 6px;
-            cursor: pointer;
-            font-size: 12px;
-            font-weight: 700;
-            z-index: 10;
-        }
-
-        .copy-btn:hover {
-            background: #eef2f6;
-        }
-
+        .copy-btn,
         .markdown-copy-btn {
             position: absolute;
             top: 8px;
@@ -224,6 +207,7 @@
             z-index: 10;
         }
 
+        .copy-btn:hover,
         .markdown-copy-btn:hover {
             background: #eef2f6;
         }
@@ -243,9 +227,7 @@
             -webkit-font-smoothing: auto;
             -moz-osx-font-smoothing: auto;
             border: 1px solid #d0d7de;
-            background: #ffffff;
-            color: #111111;
-            }
+        }
 
         .summary-box,
         .wide-panel,
@@ -262,6 +244,25 @@
             white-space: pre-wrap;
         }
 
+        .model-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 16px;
+            margin-top: 14px;
+        }
+
+        .model-card {
+            padding: 16px;
+            background: #fcfcff;
+        }
+
+        .model-name {
+            margin: 0 0 12px;
+            font-size: 18px;
+            color: #1e3a8a;
+            word-break: break-word;
+        }
+
         .score-grid {
             display: grid;
             grid-template-columns: repeat(5, 1fr);
@@ -270,20 +271,20 @@
         }
 
         .score-box {
-            padding: 16px;
+            padding: 12px;
             text-align: center;
         }
 
         .score-label {
             display: block;
-            font-size: 13px;
+            font-size: 12px;
             color: var(--muted);
-            margin-bottom: 8px;
+            margin-bottom: 6px;
             font-weight: 700;
         }
 
         .score-value {
-            font-size: 28px;
+            font-size: 22px;
             font-weight: 800;
         }
 
@@ -295,7 +296,7 @@
         }
 
         .mini-panel {
-            padding: 16px;
+            padding: 14px;
             background: #f8fafc;
         }
 
@@ -303,7 +304,7 @@
         .wide-panel h3,
         .chat-panel h3 {
             margin: 0 0 10px;
-            font-size: 18px;
+            font-size: 17px;
         }
 
         .clean-list {
@@ -311,6 +312,13 @@
             padding-left: 20px;
             line-height: 1.8;
             color: #374151;
+        }
+
+        .clean-list.empty::before {
+            content: "No issues reported.";
+            color: #6b7280;
+            margin-left: -20px;
+            display: inline-block;
         }
 
         .markdown-body {
@@ -328,7 +336,6 @@
             overflow-x: auto !important;
             text-shadow: none !important;
             border: 1px solid #d0d7de !important;
-
         }
 
         .markdown-body code,
@@ -338,10 +345,8 @@
             text-shadow: none !important;
             background: transparent !important;
             color: #111111 !important;
-
         }
 
-        /* ---------- Custom Prism colors ---------- */
         code[class*="language-"],
         pre[class*="language-"] {
             color: #111111 !important;
@@ -420,7 +425,7 @@
             left: 50%;
             transform: translateX(-50%);
             bottom: 16px;
-            width: min(1000px, calc(100vw - 24px));
+            width: min(1200px, calc(100vw - 24px));
             z-index: 9999;
         }
 
@@ -538,7 +543,11 @@
             cursor: not-allowed;
         }
 
-        @media (max-width: 900px) {
+        @media (max-width: 1100px) {
+            .model-grid {
+                grid-template-columns: 1fr;
+            }
+
             .score-grid {
                 grid-template-columns: repeat(2, 1fr);
             }
@@ -592,10 +601,10 @@
 <body>
     <div class="page">
         <header class="topbar">
-            <div class="eyebrow">LLM + Rule-based Review</div>
+            <div class="eyebrow">4 Free LLMs + Rule-based Review</div>
             <h1>PromptCode</h1>
             <p class="subtitle">
-                Code review workspace with natural language chat support, multi-language generation, markdown rendering, syntax highlight, and copy buttons.
+                Code review workspace with direct side-by-side display of four LLM review outputs.
             </p>
 
             <div class="clear-row">
@@ -647,7 +656,13 @@
 
                 <section class="assistant-card">
                     <div class="card-top">
-                        <span class="pill pill-assistant">PromptCode</span>
+                        <span class="pill pill-assistant">
+                            {% if item.input_kind == "chat" %}
+                            PromptCode
+                            {% else %}
+                            4-Model Review Results
+                            {% endif %}
+                        </span>
                     </div>
 
                     {% if item.input_kind == "chat" %}
@@ -656,88 +671,96 @@
                         <div class="markdown-body render-markdown">{{ item.result.summary }}</div>
                     </section>
                     {% else %}
-                    <section class="summary-box">
-                        <h3>Summary</h3>
-                        <p>{{ item.result.summary }}</p>
-                    </section>
+                    <div class="model-grid">
+                        {% for model_item in item.result %}
+                        <article class="model-card">
+                            <h3 class="model-name">{{ model_item.model }}</h3>
 
-                    <div class="score-grid">
-                        <div class="score-box">
-                            <span class="score-label">Correctness</span>
-                            <span class="score-value">{{ item.result.scores.correctness }}</span>
-                        </div>
-                        <div class="score-box">
-                            <span class="score-label">Readability</span>
-                            <span class="score-value">{{ item.result.scores.readability }}</span>
-                        </div>
-                        <div class="score-box">
-                            <span class="score-label">Maintainability</span>
-                            <span class="score-value">{{ item.result.scores.maintainability }}</span>
-                        </div>
-                        <div class="score-box">
-                            <span class="score-label">Documentation</span>
-                            <span class="score-value">{{ item.result.scores.documentation_quality }}</span>
-                        </div>
-                        <div class="score-box">
-                            <span class="score-label">Overall</span>
-                            <span class="score-value">{{ item.result.overall_score }}</span>
-                        </div>
+                            <section class="summary-box">
+                                <h3>Summary</h3>
+                                <p>{{ model_item.result.summary }}</p>
+                            </section>
+
+                            <div class="score-grid">
+                                <div class="score-box">
+                                    <span class="score-label">Correctness</span>
+                                    <span class="score-value">{{ model_item.result.scores.correctness }}</span>
+                                </div>
+                                <div class="score-box">
+                                    <span class="score-label">Readability</span>
+                                    <span class="score-value">{{ model_item.result.scores.readability }}</span>
+                                </div>
+                                <div class="score-box">
+                                    <span class="score-label">Maintainability</span>
+                                    <span class="score-value">{{ model_item.result.scores.maintainability }}</span>
+                                </div>
+                                <div class="score-box">
+                                    <span class="score-label">Documentation</span>
+                                    <span class="score-value">{{ model_item.result.scores.documentation_quality }}</span>
+                                </div>
+                                <div class="score-box">
+                                    <span class="score-label">Overall</span>
+                                    <span class="score-value">{{ model_item.result.overall_score }}</span>
+                                </div>
+                            </div>
+
+                            <div class="analysis-grid">
+                                <section class="mini-panel">
+                                    <h3>Bugs</h3>
+                                    <ul class="clean-list {% if not model_item.result.bugs %}empty{% endif %}">
+                                        {% for b in model_item.result.bugs %}
+                                        <li>{{ b }}</li>
+                                        {% endfor %}
+                                    </ul>
+                                </section>
+
+                                <section class="mini-panel">
+                                    <h3>Style Issues</h3>
+                                    <ul class="clean-list {% if not model_item.result.style_issues %}empty{% endif %}">
+                                        {% for s in model_item.result.style_issues %}
+                                        <li>{{ s }}</li>
+                                        {% endfor %}
+                                    </ul>
+                                </section>
+
+                                <section class="mini-panel">
+                                    <h3>Maintainability Issues</h3>
+                                    <ul class="clean-list {% if not model_item.result.maintainability_issues %}empty{% endif %}">
+                                        {% for m in model_item.result.maintainability_issues %}
+                                        <li>{{ m }}</li>
+                                        {% endfor %}
+                                    </ul>
+                                </section>
+
+                                <section class="mini-panel">
+                                    <h3>Documentation Issues</h3>
+                                    <ul class="clean-list {% if not model_item.result.documentation_issues %}empty{% endif %}">
+                                        {% for d in model_item.result.documentation_issues %}
+                                        <li>{{ d }}</li>
+                                        {% endfor %}
+                                    </ul>
+                                </section>
+                            </div>
+
+                            <section class="wide-panel">
+                                <h3>Suggestions</h3>
+                                <ul class="clean-list {% if not model_item.result.suggestions %}empty{% endif %}">
+                                    {% for s in model_item.result.suggestions %}
+                                    <li>{{ s }}</li>
+                                    {% endfor %}
+                                </ul>
+                            </section>
+
+                            <section class="wide-panel">
+                                <h3>Improved Code</h3>
+                                <div class="code-wrap">
+                                    <button class="copy-btn" type="button" onclick="copyText(this)">Copy</button>
+                                    <pre class="code-block">{{ model_item.result.improved_code }}</pre>
+                                </div>
+                            </section>
+                        </article>
+                        {% endfor %}
                     </div>
-
-                    <div class="analysis-grid">
-                        <section class="mini-panel">
-                            <h3>Bugs</h3>
-                            <ul class="clean-list">
-                                {% for b in item.result.bugs %}
-                                <li>{{ b }}</li>
-                                {% endfor %}
-                            </ul>
-                        </section>
-
-                        <section class="mini-panel">
-                            <h3>Style Issues</h3>
-                            <ul class="clean-list">
-                                {% for s in item.result.style_issues %}
-                                <li>{{ s }}</li>
-                                {% endfor %}
-                            </ul>
-                        </section>
-
-                        <section class="mini-panel">
-                            <h3>Maintainability Issues</h3>
-                            <ul class="clean-list">
-                                {% for m in item.result.maintainability_issues %}
-                                <li>{{ m }}</li>
-                                {% endfor %}
-                            </ul>
-                        </section>
-
-                        <section class="mini-panel">
-                            <h3>Documentation Issues</h3>
-                            <ul class="clean-list">
-                                {% for d in item.result.documentation_issues %}
-                                <li>{{ d }}</li>
-                                {% endfor %}
-                            </ul>
-                        </section>
-                    </div>
-
-                    <section class="wide-panel">
-                        <h3>Suggestions</h3>
-                        <ul class="clean-list">
-                            {% for s in item.result.suggestions %}
-                            <li>{{ s }}</li>
-                            {% endfor %}
-                        </ul>
-                    </section>
-
-                    <section class="wide-panel">
-                        <h3>Improved Code</h3>
-                        <div class="code-wrap">
-                            <button class="copy-btn" type="button" onclick="copyText(this)">Copy</button>
-                            <pre class="code-block">{{ item.result.improved_code }}</pre>
-                        </div>
-                    </section>
                     {% endif %}
                 </section>
             </div>
@@ -763,7 +786,8 @@
                     </div>
 
                     <div class="toolbar-right">
-                        <span class="chip">Multi-language</span>
+                        <span class="chip">4 Free Models</span>
+                        <span class="chip">Direct Comparison</span>
                         <span class="chip">Markdown + Highlight</span>
                     </div>
                 </div>
@@ -777,7 +801,7 @@
                 >{{ code }}</textarea>
 
                 <div class="composer-footer">
-                    <div class="composer-tip">Auto mode detects natural language vs code. Chat mode is best for direct questions.</div>
+                    <div class="composer-tip">Code review mode now displays four model outputs directly on the page.</div>
                     <button type="submit" class="send-btn" id="send-btn">Send</button>
                 </div>
             </form>
