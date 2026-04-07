@@ -16,7 +16,7 @@ FREE_MODELS = [
     "openai/gpt-oss-20b",
     "meta-llama/llama-3.1-8b-instruct",
     "google/gemma-4-26b-a4b-it",
-    "qwen/qwen3.6-plus:free",
+    "openai/sora-2-pro",
 ]
 
 
